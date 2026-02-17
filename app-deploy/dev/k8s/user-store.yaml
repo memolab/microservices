@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-store-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-store-service
+  template:
+    metadata:
+      labels:
+        app: user-store-service
+        monitoring: enabled
+    spec:
+      containers:
+        - name: user-store-service
+          image: microservices/user-store-service
+          ports:
+            - name: grpc-port
+              containerPort: 7890
+            - name: metrics-port
+              containerPort: 2112
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "125m"
+            limits:
+              memory: "128Mi"
+              cpu: "125m"
+          envFrom:
+            - configMapRef:
+                name: app-config
+          env:
+            - name: RABBITMQ_URI
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: RABBITMQ_URI
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-store-service
+  labels:
+    monitoring: enabled
+spec:
+  type: ClusterIP
+  selector:
+    app: user-store-service
+  ports:
+    - name: grpc
+      port: 7890
+      targetPort: grpc-port
+    - name: metrics
+      port: 2112
+      targetPort: metrics-port

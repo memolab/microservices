@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package api.v1;
+
+option go_package = "microservices/common/pb";
+
+//  import "google/protobuf/empty.proto";
+
+//User struct
+message User {
+  string id   = 1;
+  string name = 2;
+  string data = 3;
+}
+
+//GetUserRequest request user by id
+message GetUserRequest{
+  string id = 1;
+}
+
+//GetUserResponse return user struct
+message GetUserResponse{
+  User user = 1;
+}
+
+// UserService user demo service
+service UserService {
+  //GetUser get user by id
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+}
