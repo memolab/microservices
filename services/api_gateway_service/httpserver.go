@@ -16,6 +16,7 @@ import (
 	"microservices-demo/common/types"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"google.golang.org/grpc"
 )
 
 //go:embed static/*
@@ -23,6 +24,7 @@ var fsAssets embed.FS
 
 type cntrlHandlers struct {
 	messagePublisher *messagePublisher
+	userStoreClient  *grpc.ClientConn
 }
 
 func start(sctx context.Context, stop context.CancelFunc) {
@@ -43,6 +45,14 @@ func start(sctx context.Context, stop context.CancelFunc) {
 	}
 
 	handlers := &cntrlHandlers{messagePublisher: newMessagePublisher(rabbitmq)}
+	userStoreConn, err := newUserStoreClient()
+	if err != nil {
+		slog.Error("failed to create user store client", "error", err)
+		stop()
+		return
+	}
+	handlers.userStoreClient = userStoreConn
+
 	mux := http.NewServeMux()
 
 	// static files handler
@@ -81,11 +91,12 @@ func start(sctx context.Context, stop context.CancelFunc) {
 
 	go func() {
 		<-sctx.Done()
-		tctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		tctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srvr.Shutdown(tctx); err != nil {
 			slog.Error("shutdown http")
 		}
+		handlers.userStoreClient.Close()
 		shutdownTracer(tctx)
 	}()
 

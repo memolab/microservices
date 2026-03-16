@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 type UserService struct {
@@ -53,14 +54,23 @@ func start(sctx context.Context, stop context.CancelFunc) {
 	prometheusMetrics := observe.InitPromMetrics()
 	prometheusHTTP := observe.InitPrometheusHTTPServer(env.GetString("METRICS_PORT", ""))
 
-	opts := []grpc.ServerOption{
+	grpcServer := grpc.NewServer([]grpc.ServerOption{
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             5 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionIdle:     15 * time.Minute,
+			MaxConnectionAge:      30 * time.Minute,
+			MaxConnectionAgeGrace: 10 * time.Second,
+			Time:                  2 * time.Minute,
+			Timeout:               20 * time.Second,
+		}),
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithTracerProvider(otel.GetTracerProvider()))),
 		grpc.ChainUnaryInterceptor(
 			prometheusMetrics.UnaryServerInterceptor(),
 		),
-	}
-
-	grpcServer := grpc.NewServer(opts...)
+	}...)
 	pb.RegisterUserServiceServer(grpcServer, &UserService{messageConsumer: messageConsumer})
 
 	prometheusMetrics.InitializeMetrics(grpcServer)
@@ -75,7 +85,7 @@ func start(sctx context.Context, stop context.CancelFunc) {
 
 	go func() {
 		<-sctx.Done()
-		tctx, cancel := context.WithTimeout(sctx, 5*time.Second)
+		tctx, cancel := context.WithTimeout(sctx, 10*time.Second)
 		defer cancel()
 		grpcServer.GracefulStop()
 		shutdownTracer(tctx)
